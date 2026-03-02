@@ -9,7 +9,6 @@
         body { font-family: 'Kiwi Maru', sans-serif; text-align: center; background: #e0e0e0; padding: 20px; }
         .controls { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); display: inline-block; margin-bottom: 20px; text-align: left; }
         
-        /* 画面上での見た目を制限（ここが重要） */
         #canvas { 
             background: #fff; 
             box-shadow: 0 10px 25px rgba(0,0,0,0.2); 
@@ -40,7 +39,7 @@
         <label>日付</label>
         <input type="text" id="dateInput" placeholder="2026.03.02">
     </div>
-    <button id="downloadBtn">高画質で保存する</button>
+    <button id="downloadBtn">保存する</button>
 </div>
 
 <br>
@@ -54,8 +53,7 @@
     const dateInput = document.getElementById('dateInput');
     const downloadBtn = document.getElementById('downloadBtn');
 
-    // ★ 解像度を 2400px に設定（800pxの3倍）
-    // これにより、保存したときに非常に精細になります。
+    // ★ 解像度を 2400px に設定
     const baseSize = 2400; 
     canvas.width = baseSize;
     canvas.height = baseSize;
@@ -151,4 +149,5 @@
     draw();
 </script>
 </body>
+
 </html>
