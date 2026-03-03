@@ -2,44 +2,40 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>高解像度チェキメーカー</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>手書き対応チェキメーカー</title>
     <link href="https://fonts.googleapis.com/css2?family=Kiwi+Maru:wght@400&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Kiwi Maru', sans-serif; text-align: center; background: #e0e0e0; padding: 20px; }
-        .controls { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); display: inline-block; margin-bottom: 20px; text-align: left; }
-        
+        body { font-family: 'Kiwi Maru', sans-serif; text-align: center; background: #e0e0e0; padding: 10px; margin: 0; }
+        .controls { background: white; padding: 15px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); display: inline-block; margin-bottom: 15px; text-align: left; max-width: 90%; }
         #canvas { 
             background: #fff; 
             box-shadow: 0 10px 25px rgba(0,0,0,0.2); 
             border-radius: 5px; 
-            max-width: 500px; /* 画面上では500px幅で見せる */
-            width: 100%;      /* スマホ対応 */
+            max-width: 500px; 
+            width: 100%; 
             height: auto; 
+            touch-action: none; /* スマホのスクロールを防止 */
+            cursor: crosshair;
         }
-
-        .control-group { margin-bottom: 15px; }
-        label { display: block; font-size: 0.8em; margin-bottom: 5px; color: #666; }
-        textarea, input[type="text"] { padding: 10px; border: 1px solid #ccc; border-radius: 5px; width: 250px; font-family: 'Kiwi Maru', sans-serif; }
-        button { padding: 10px 20px; background: #333; color: white; border: none; border-radius: 5px; cursor: pointer; display: block; width: 100%; }
+        .control-group { margin-bottom: 10px; }
+        label { display: block; font-size: 0.8em; margin-bottom: 3px; color: #666; }
+        input[type="file"], textarea, input[type="text"] { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ccc; border-radius: 5px; font-family: 'Kiwi Maru', sans-serif; }
+        .btn-group { display: flex; gap: 5px; margin-top: 10px; }
+        button { flex: 1; padding: 10px; background: #333; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button.secondary { background: #888; }
     </style>
 </head>
 <body>
 
 <div class="controls">
-    <div class="control-group">
-        <label>写真を選択</label>
-        <input type="file" id="upload" accept="image/*">
+    <div class="control-group"><label>1. 写真選択</label><input type="file" id="upload" accept="image/*"></div>
+    <div class="control-group"><label>2. メッセージ（テキスト）</label><textarea id="textInput" placeholder="入力または下部に直接手書き"></textarea></div>
+    <div class="control-group"><label>3. 日付</label><input type="text" id="dateInput" placeholder="2026.03.03"></div>
+    <div class="btn-group">
+        <button id="clearDrawBtn" class="secondary">手書きを消去</button>
+        <button id="downloadBtn">保存する</button>
     </div>
-    <div class="control-group">
-        <label>メッセージ</label>
-        <textarea id="textInput" placeholder="メッセージを入力"></textarea>
-    </div>
-    <div class="control-group">
-        <label>日付</label>
-        <input type="text" id="dateInput" placeholder="2026.03.02">
-    </div>
-    <button id="downloadBtn">保存する</button>
 </div>
 
 <br>
@@ -51,103 +47,123 @@
     const upload = document.getElementById('upload');
     const textInput = document.getElementById('textInput');
     const dateInput = document.getElementById('dateInput');
+    const clearDrawBtn = document.getElementById('clearDrawBtn');
     const downloadBtn = document.getElementById('downloadBtn');
 
-    // ★ 解像度を 2400px に設定
     const baseSize = 2400; 
     canvas.width = baseSize;
     canvas.height = baseSize;
 
     let currentImg = null;
+    let isDrawing = false;
+    let drawingData = []; // 手書きのストロークを保存
 
-    function draw() {
+    // 再描画のメイン関数
+    function render() {
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // 各マージンやサイズも 3倍（baseSizeに比例）させる
-        const scale = baseSize / 800; 
+        const scale = baseSize / 800;
         const margin = 60 * scale;
         const photoBoxW = canvas.width - (margin * 2);
         const photoBoxH = canvas.height - (240 * scale);
 
+        // 1. 画像描画
         if (currentImg) {
-            let drawW = photoBoxW;
-            let drawH = photoBoxW / (currentImg.width / currentImg.height);
-            if (drawH > photoBoxH) {
-                drawH = photoBoxH;
-                drawW = photoBoxH * (currentImg.width / currentImg.height);
-            }
-            const x = margin + (photoBoxW - drawW) / 2;
-            const y = margin + (photoBoxH - drawH) / 2;
-            ctx.drawImage(currentImg, x, y, drawW, drawH);
+            let drawW = photoBoxW, drawH = photoBoxW / (currentImg.width / currentImg.height);
+            if (drawH > photoBoxH) { drawH = photoBoxH; drawW = photoBoxH * (currentImg.width / currentImg.height); }
+            ctx.drawImage(currentImg, margin + (photoBoxW - drawW) / 2, margin + (photoBoxH - drawH) / 2, drawW, drawH);
         }
 
-        // メッセージ描画（サイズ計算をscaleに合わせる）
+        // 2. テキスト描画 (自動サイズ調整)
         const text = textInput.value;
-        const footerY = canvas.height - (180 * scale);
-        const footerMaxH = 140 * scale;
-
         if (text) {
             const lines = text.split('\n');
             let fontSize = 45 * scale;
-            const lineHeightRatio = 1.3;
-
             ctx.font = `${fontSize}px 'Kiwi Maru'`;
-            while (fontSize > 15 * scale) {
-                const totalHeight = lines.length * fontSize * lineHeightRatio;
-                const maxWidth = Math.max(...lines.map(l => ctx.measureText(l).width));
-                if (totalHeight <= footerMaxH && maxWidth <= photoBoxW) break;
-                fontSize -= 2 * scale;
-                ctx.font = `${fontSize}px 'Kiwi Maru'`;
+            ctx.fillStyle = "#444"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            const startY = (canvas.height - 110 * scale);
+            lines.forEach((line, i) => ctx.fillText(line, canvas.width/2, startY + (i*fontSize*1.3)));
+        }
+
+        // 3. 日付描画
+        if (dateInput.value) {
+            ctx.fillStyle = "#666"; ctx.font = `${24 * scale}px 'Kiwi Maru'`;
+            ctx.textAlign = "right"; ctx.textBaseline = "bottom";
+            ctx.fillText(dateInput.value, canvas.width - 40 * scale, canvas.height - 30 * scale);
+        }
+
+        // 4. 手書きデータの描画
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        ctx.strokeStyle = "#444";
+        ctx.lineWidth = 5 * scale;
+        
+        drawingData.forEach(path => {
+            if (path.length < 2) return;
+            ctx.beginPath();
+            ctx.moveTo(path[0].x, path[0].y);
+            for (let i = 1; i < path.length; i++) {
+                ctx.lineTo(path[i].x, path[i].y);
             }
-
-            ctx.fillStyle = "#444";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            const startY = footerY + (footerMaxH / 2) - ((lines.length - 1) * fontSize * lineHeightRatio) / 2;
-
-            lines.forEach((line, i) => {
-                ctx.fillText(line, canvas.width / 2, startY + (i * fontSize * lineHeightRatio));
-            });
-        }
-
-        // 日付
-        const dateText = dateInput.value;
-        if (dateText) {
-            ctx.fillStyle = "#666";
-            ctx.font = `${24 * scale}px 'Kiwi Maru'`;
-            ctx.textAlign = "right";
-            ctx.textBaseline = "bottom";
-            ctx.fillText(dateText, canvas.width - (40 * scale), canvas.height - (30 * scale));
-        }
+            ctx.stroke();
+        });
     }
 
+    // --- 手書きイベント処理 ---
+    function getPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        // 画面上の座標をキャンバス解像度(2400px)に変換
+        return {
+            x: (clientX - rect.left) * (canvas.width / rect.width),
+            y: (clientY - rect.top) * (canvas.height / rect.height)
+        };
+    }
+
+    function startDraw(e) {
+        isDrawing = true;
+        drawingData.push([getPos(e)]);
+        e.preventDefault();
+    }
+
+    function doDraw(e) {
+        if (!isDrawing) return;
+        drawingData[drawingData.length - 1].push(getPos(e));
+        render();
+        e.preventDefault();
+    }
+
+    function stopDraw() { isDrawing = false; }
+
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('mousemove', doDraw);
+    window.addEventListener('mouseup', stopDraw);
+    canvas.addEventListener('touchstart', startDraw);
+    canvas.addEventListener('touchmove', doDraw);
+    canvas.addEventListener('touchend', stopDraw);
+
+    clearDrawBtn.addEventListener('click', () => { drawingData = []; render(); });
     upload.addEventListener('change', (e) => {
         const reader = new FileReader();
-        reader.onload = (event) => {
-            const img = new Image();
-            img.src = event.target.result;
-            img.onload = () => {
-                currentImg = img;
-                draw();
-            };
+        reader.onload = (ev) => {
+            currentImg = new Image();
+            currentImg.onload = render;
+            currentImg.src = ev.target.result;
         };
         reader.readAsDataURL(e.target.files[0]);
     });
-
-    textInput.addEventListener('input', draw);
-    dateInput.addEventListener('input', draw);
-
+    textInput.addEventListener('input', render);
+    dateInput.addEventListener('input', render);
     downloadBtn.addEventListener('click', () => {
-        // 保存時は高品質なPNG（またはJPEG）として出力
         const link = document.createElement('a');
-        link.download = `high_res_photo_${Date.now()}.png`;
-        link.href = canvas.toDataURL('image/png', 1.0);
+        link.download = `my_cheki_${Date.now()}.png`;
+        link.href = canvas.toDataURL('image/png');
         link.click();
     });
 
-    draw();
+    render();
 </script>
 </body>
-
 </html>
