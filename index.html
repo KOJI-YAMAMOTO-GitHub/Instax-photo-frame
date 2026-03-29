@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>チェキ風メーカー(川柳添えても)</title>
     <link href="https://fonts.googleapis.com/css2?family=Kiwi+Maru:wght@400&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
     <style>
         body { font-family: 'Kiwi Maru', sans-serif; text-align: center; background: #e0e0e0; padding: 10px; margin: 0; }
         .controls { background: white; padding: 15px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); display: inline-block; margin-bottom: 15px; text-align: left; max-width: 90%; box-sizing: border-box; }
@@ -16,15 +17,14 @@
         button { flex: 1; padding: 12px; background: #333; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 1em; }
         button.secondary { background: #888; }
         
-        /* Canvasの表示設定：画面幅に合わせる（以前の状態に戻す） */
         #canvas { 
             background: #fff; 
             box-shadow: 0 10px 25px rgba(0,0,0,0.2); 
             border-radius: 5px; 
-            max-width: 500px; /* PCでの最大幅 */
-            width: 100%;      /* スマホでは画面幅 */
+            max-width: 500px; 
+            width: 100%;      
             height: auto; 
-            touch-action: none; /* スマホのスクロール防止 */
+            touch-action: none; 
             cursor: crosshair;
         }
     </style>
@@ -53,27 +53,23 @@
     const clearDrawBtn = document.getElementById('clearDrawBtn');
     const downloadBtn = document.getElementById('downloadBtn');
 
-    // 高解像度（2400px）設定を維持
     const baseSize = 2400; 
     canvas.width = baseSize;
     canvas.height = baseSize;
 
     let currentImg = null;
     let isDrawing = false;
-    let drawingData = []; // ストローク（座標、時間、太さ、不透明度）を保存
+    let drawingData = []; 
 
-    // --- メイン描画関数 ---
     function render() {
-        // 背景（白フレーム）
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        const scale = baseSize / 800; // 内部計算用の倍率
+        const scale = baseSize / 800; 
         const margin = 60 * scale;
         const photoBoxW = canvas.width - (margin * 2);
         const photoBoxH = canvas.height - (240 * scale);
 
-        // 1. 画像描画（Fit表示）
         if (currentImg) {
             let drawW = photoBoxW, drawH = photoBoxW / (currentImg.width / currentImg.height);
             if (drawH > photoBoxH) { drawH = photoBoxH; drawW = photoBoxH * (currentImg.width / currentImg.height); }
@@ -82,7 +78,6 @@
             ctx.drawImage(currentImg, x, y, drawW, drawH);
         }
 
-        // 2. テキスト描画（自動サイズ調整、中央揃え）
         const text = textInput.value;
         const footerY = canvas.height - (180 * scale);
         const footerMaxH = 140 * scale;
@@ -103,69 +98,47 @@
             lines.forEach((line, i) => ctx.fillText(line, canvas.width / 2, startY + (i * fontSize * lineHeightRatio)));
         }
 
-        // 3. 日付描画（右下）
         if (dateInput.value) {
             ctx.fillStyle = "#666"; ctx.font = `${24 * scale}px 'Kiwi Maru'`;
             ctx.textAlign = "right"; ctx.textBaseline = "bottom";
             ctx.fillText(dateInput.value, canvas.width - (40 * scale), canvas.height - (30 * scale));
         }
 
-        // 4. 万年筆風手書き描画
         drawFountainPenLines(scale);
     }
 
-    // --- 万年筆風の線を引くロジック ---
     function drawFountainPenLines(scale) {
-        ctx.fillStyle = "#333344"; // インクの色（少し青みがかった黒）
-        
+        ctx.fillStyle = "#333344";
         drawingData.forEach(path => {
             if (path.length < 2) return;
-
             for (let i = 1; i < path.length; i++) {
                 const p1 = path[i - 1];
                 const p2 = path[i];
-
-                // 2点間の距離と時間を計算
                 const dist = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
                 const time = p2.time - p1.time;
-                
-                // 速度を計算（距離 / 時間）
                 const speed = time > 0 ? dist / time : 0;
-
-                // ★ 速度による太さの計算（速いと細く、遅いと太く）
-                // 基準の太さ 4px * scale。速度に応じて 0.5倍〜1.5倍に変化させる。
                 const baseWidth = 4 * scale;
                 const targetLineWidth = Math.max(baseWidth * 0.5, Math.min(baseWidth * 1.5, baseWidth * (1.5 - speed * 0.1)));
-                
-                // ★ 速度による不透明度の計算（速いとかすれる）
                 const targetAlpha = Math.max(0.4, Math.min(1.0, 1.2 - speed * 0.05));
-
-                // 2点間を補間して円を描画（滑らかな線にするため）
-                const steps = Math.ceil(dist / (1 * scale)); // 1pxごとに描画
+                const steps = Math.ceil(dist / (1 * scale));
                 for (let j = 0; j < steps; j++) {
                     const t = j / steps;
                     const x = p1.x + (p2.x - p1.x) * t;
                     const y = p1.y + (p2.y - p1.y) * t;
-                    
-                    // 前の点からの太さと不透明度を滑らかに変化させる（簡易）
                     const currentWidth = p1.width + (targetLineWidth - p1.width) * t;
                     const currentAlpha = p1.alpha + (targetAlpha - p1.alpha) * t;
-
                     ctx.globalAlpha = currentAlpha;
                     ctx.beginPath();
                     ctx.arc(x, y, currentWidth / 2, 0, Math.PI * 2);
                     ctx.fill();
                 }
-                
-                // 次の計算のために、今回の太さと不透明度を保存
                 p2.width = targetLineWidth;
                 p2.alpha = targetAlpha;
             }
         });
-        ctx.globalAlpha = 1.0; // 元に戻す
+        ctx.globalAlpha = 1.0;
     }
 
-    // --- 手書きイベント処理 ---
     function getPos(e) {
         const rect = canvas.getBoundingClientRect();
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -174,7 +147,6 @@
             x: (clientX - rect.left) * (canvas.width / rect.width),
             y: (clientY - rect.top) * (canvas.height / rect.height),
             time: Date.now(),
-            // 初期の太さと不透明度
             width: 4 * (baseSize / 800), 
             alpha: 1.0
         };
@@ -187,22 +159,46 @@
     canvas.addEventListener('mousedown', startDraw);
     canvas.addEventListener('mousemove', doDraw);
     window.addEventListener('mouseup', stopDraw);
-    // スマホ対応
     canvas.addEventListener('touchstart', (e) => { startDraw(e); e.preventDefault(); }, {passive: false});
     canvas.addEventListener('touchmove', (e) => { doDraw(e); e.preventDefault(); }, {passive: false});
     canvas.addEventListener('touchend', stopDraw);
 
-    // --- コントロールイベント ---
     clearDrawBtn.addEventListener('click', () => { drawingData = []; render(); });
+
+    // --- 日付自動取得機能の追加 ---
     upload.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // 1. Exif情報の取得を試みる
+        EXIF.getData(file, function() {
+            let dateStr = EXIF.getTag(this, "DateTimeOriginal");
+            
+            if (dateStr) {
+                // Exif形式 "YYYY:MM:DD HH:MM:SS" を "YYYY.MM.DD" に変換
+                const parts = dateStr.split(" ")[0].split(":");
+                dateInput.value = `${parts[0]}.${parts[1]}.${parts[2]}`;
+            } else {
+                // 2. Exifがない場合はファイルの最終更新日を使用
+                const lastModified = new Date(file.lastModified);
+                const y = lastModified.getFullYear();
+                const m = String(lastModified.getMonth() + 1).padStart(2, '0');
+                const d = String(lastModified.getDate()).padStart(2, '0');
+                dateInput.value = `${y}.${m}.${d}`;
+            }
+            render();
+        });
+
+        // 画像のプレビュー表示
         const reader = new FileReader();
         reader.onload = (ev) => {
             currentImg = new Image();
             currentImg.onload = render;
             currentImg.src = ev.target.result;
         };
-        reader.readAsDataURL(e.target.files[0]);
+        reader.readAsDataURL(file);
     });
+
     textInput.addEventListener('input', render);
     dateInput.addEventListener('input', render);
     downloadBtn.addEventListener('click', () => {
@@ -212,7 +208,7 @@
         link.click();
     });
 
-    render(); // 初期描画
+    render();
 </script>
 </body>
 </html>
